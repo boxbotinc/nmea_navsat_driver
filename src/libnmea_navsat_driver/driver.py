@@ -33,9 +33,11 @@
 import math
 
 import rospy
+import tf_conversions
 
 from sensor_msgs.msg import NavSatFix, NavSatStatus, TimeReference
-from geometry_msgs.msg import TwistStamped
+from geometry_msgs.msg import Quaternion
+from nav_msgs.msg import Odometry
 
 from libnmea_navsat_driver.checksum_utils import check_nmea_checksum
 import libnmea_navsat_driver.parser
@@ -44,7 +46,7 @@ import libnmea_navsat_driver.parser
 class RosNMEADriver(object):
     def __init__(self):
         self.fix_pub = rospy.Publisher('fix', NavSatFix, queue_size=1)
-        self.vel_pub = rospy.Publisher('vel', TwistStamped, queue_size=1)
+        self.vel_pub = rospy.Publisher('gps_vel', Odometry, queue_size=1)
         self.time_ref_pub = rospy.Publisher('time_reference', TimeReference, queue_size=1)
 
         self.time_ref_source = rospy.get_param('~time_ref_source', None)
@@ -161,14 +163,48 @@ class RosNMEADriver(object):
 
             # Publish velocity from RMC regardless, since GGA doesn't provide it.
             if data['fix_valid']:
-                current_vel = TwistStamped()
+                current_gps_vel=Odometry()
+                current_gps_vel.header.stamp = current_time
+                current_gps_vel.header.frame_id = frame_id
+                current_gps_vel.twist.twist.linear.x = data['speed'] * \
+                    math.sin(data['true_course'])
+                current_gps_vel.twist.twist.linear.y = data['speed'] * \
+                    math.cos(data['true_course'])
+
+                #true_course is 0 at north and increases to east
+                #needs to be converted to enu
+                converted_course=-(data['true_course']-math.pi/2)
+                if converted_course>math.pi:
+                    converted_course=converted_course-2*math.pi
+                elif converted_course<-math.pi:
+                    converted_course=converted_course-2*math.pi
+                current_gps_vel.child_frame_id = frame_id
+                current_gps_vel.pose.pose.orientation = Quaternion(*tf_conversions.transformations.quaternion_from_euler(0, 0, converted_course))
+                self.vel_pub.publish(current_gps_vel)
+                """
+                current_vel = TwistWithCovarianceStamped()
                 current_vel.header.stamp = current_time
                 current_vel.header.frame_id = frame_id
-                current_vel.twist.linear.x = data['speed'] * \
+                current_vel.twist.twist.linear.x = data['speed'] * \
                     math.sin(data['true_course'])
-                current_vel.twist.linear.y = data['speed'] * \
+                current_vel.twist.twist.linear.y = data['speed'] * \
                     math.cos(data['true_course'])
                 self.vel_pub.publish(current_vel)
+
+                #true_course is 0 at north and increases to east
+                #needs to be converted to enu
+                
+                converted_course=-(data['true_course']-math.pi/2)
+                if converted_course>math.pi:
+                    converted_course=converted_course-2*math.pi
+                elif converted_course<-math.pi:
+                    converted_course=converted_course-2*math.pi
+                current_orient= PoseWithCovarianceStamped()
+                current_orient.header.stamp = current_time
+                current_orient.header.frame_id = frame_id
+                current_orient.pose.pose.orientation = Quaternion(*tf_conversions.transformations.quaternion_from_euler(0, 0, converted_course))
+                self.orient_pub.publish(current_orient)
+                """
         else:
             return False
 
@@ -177,8 +213,8 @@ class RosNMEADriver(object):
     @staticmethod
     def get_frame_id():
         frame_id = rospy.get_param('~frame_id', 'gps')
+        """
         if frame_id[0] != "/":
-            """Add the TF prefix"""
             prefix = ""
             prefix_param = rospy.search_param('tf_prefix')
             if prefix_param:
@@ -187,4 +223,5 @@ class RosNMEADriver(object):
                     prefix = "/%s" % prefix
             return "%s/%s" % (prefix, frame_id)
         else:
-            return frame_id
+        """
+        return frame_id

@@ -38,6 +38,7 @@ import tf_conversions
 from sensor_msgs.msg import NavSatFix, NavSatStatus, TimeReference
 from geometry_msgs.msg import Quaternion
 from nav_msgs.msg import Odometry
+from std_msgs.msg import Char
 
 from libnmea_navsat_driver.checksum_utils import check_nmea_checksum
 import libnmea_navsat_driver.parser
@@ -48,6 +49,7 @@ class RosNMEADriver(object):
         self.fix_pub = rospy.Publisher('fix', NavSatFix, queue_size=1)
         self.vel_pub = rospy.Publisher('gps_vel', Odometry, queue_size=1)
         self.time_ref_pub = rospy.Publisher('time_reference', TimeReference, queue_size=1)
+        self.rtk_pub = rospy.Publisher('rtk_fix', Char, queue_size=1)
 
         self.time_ref_source = rospy.get_param('~time_ref_source', None)
         self.use_RMC = rospy.get_param('~useRMC', False)
@@ -101,6 +103,10 @@ class RosNMEADriver(object):
             current_fix.status.service = NavSatStatus.SERVICE_GPS
 
             current_fix.header.stamp = current_time
+
+            rtk_fix = Char()
+            rtk_fix.data = gps_qual
+            self.rtk_pub.publish(rtk_fix)
 
             latitude = data['latitude']
             if data['latitude_direction'] == 'S':
